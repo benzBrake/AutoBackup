@@ -1,0 +1,7 @@
+{
+  "require": {
+    "phpmailer/phpmailer": "^6.5",
+    "pclzip/pclzip": "^2.8",
+    "ext-simplexml": "*"
+  }
+}
