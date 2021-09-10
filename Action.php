@@ -5,29 +5,27 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
+use PHPMailer\PHPMailer\SMTP;
 
 require_once 'vendor/autoload.php';
 
-class AutoBackup_Action implements Widget_Interface_Do
+class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
 {
-    public $options;
-    public $plugin;
-    public $db;
-    public $requset;
-    public $response;
+    private $db;
+    private $options;
+    private $plugin;
 
     /**
      * AutoBackup_Action constructor.
      * @throws Typecho_Db_Exception
      * @throws Typecho_Plugin_Exception
      */
-    public function __construct()
+    public function __construct($request, $response, $params = null)
     {
+        parent::__construct($request, $response, $params);
+        $this->db = Typecho_Db::get();
         $this->options = Helper::options();
         $this->plugin = Helper::options()->plugin('AutoBackup');
-        $this->db = Typecho_Db::get();
-        $this->requset = Typecho_Request::getInstance();
-        $this->response = Typecho_Response::getInstance();
     }
 
     /**
@@ -66,7 +64,7 @@ class AutoBackup_Action implements Widget_Interface_Do
         // 检查 Token
         $db = $this->db;
         $params = [
-            'token' => $this->requset->token
+            'token' => Typecho_Request::getInstance()->get('token')
         ];
         $validator = new Typecho_Validate();
         $validator->addRule('token', 'required', _t("无 Token 不工作"));
@@ -194,7 +192,7 @@ class AutoBackup_Action implements Widget_Interface_Do
             $mail->Port = $SMTPPort; // SMTP 端口
             $mail->setFrom($fromMail, $fromName); //发件人
             $mail->addAddress($fromMailr);
-            // $mail->SMTPDebug = SMTP::DEBUG_CLIENT;
+            //$mail->SMTPDebug = SMTP::DEBUG_CLIENT;
 
             $mail->Subject = $smtp['subject'];
             $mail->isHTML(); // 邮件为HTML格式
