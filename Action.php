@@ -107,9 +107,14 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
 
         $smtp['to'] = $email_to;
         $smtp['from'] = $email_to;
-        $this->SendMail($smtp);
 
+        $message = $this->SendMail($smtp);
+        $filePath = str_replace("/", DIRECTORY_SEPARATOR, $filePath);
         unlink($filePath);
+        if ($message['status'] != 0) {
+            $this->throwMsg($message['msg'], $message['status']);
+        }
+        $this->throwMsg($message['msg']);
     }
 
     /**
@@ -162,7 +167,7 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
      *
      * @access public
      * @param array $smtp 邮件信息
-     * @return void
+     * @return Array
      */
     private function SendMail($smtp)
     {
@@ -200,9 +205,12 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
             $mail->Body = $smtp['AltBody'] . $smtp['body'];
             $mail->AddAttachment($smtp['attach'], $smtp['attach_name']);
             $mail->send();
-            $this->throwMsg(_t("发送成功"));
+            $message = ['status' => '200'];
+            $message['msg'] = _t("发送成功");
         } catch (Exception $e) {
-            $this->throwMsg($e->getMessage(), 500);
+            $message = ['status' => '500'];
+            $message['message'] = $e->getMessage();
         }
+        return $message;
     }
 }

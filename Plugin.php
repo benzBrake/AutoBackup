@@ -7,7 +7,7 @@
  *
  * @package AutoBackup
  * @author Ryan
- * @version 1.3.0
+ * @version 1.3.1
  * @link https://doufu.ru
  */
 class AutoBackup_Plugin implements Typecho_Plugin_Interface
