@@ -7,7 +7,7 @@
  *
  * @package AutoBackup
  * @author Ryan
- * @version 1.3.1
+ * @version 1.3.2
  * @link https://doufu.ru
  */
 class AutoBackup_Plugin implements Typecho_Plugin_Interface
@@ -143,13 +143,13 @@ class AutoBackup_Plugin implements Typecho_Plugin_Interface
             });
         </script>
         <div class="usage">
-            <h2>推广</h2>
+            <h2><?php _e("公告"); ?></h2>
             <div class="promo">
 
             </div>
-            <h2>使用说明</h2>
+            <h2><?php _e("使用说明"); ?></h2>
             <div class="description">
-                访问以下地址就可以把数据库备份并发送到指定邮箱，你可以添加到计划任务执行。
+                <?php _e("访问以下地址就可以把数据库备份并发送到指定邮箱，你可以添加到计划任务执行。"); ?>
                 <pre><?php Helper::options()->index('action/backup?token=' . unserialize(Helper::options()->AutoBackup)['token']); ?></pre>
 
             </div>
@@ -183,11 +183,14 @@ class AutoBackup_Plugin implements Typecho_Plugin_Interface
         $form->addInput($pass);
 
         // 服务器安全模式
-        $SMTPSecure = new Typecho_Widget_Helper_Form_Element_Radio('SMTPSecure', array('' => _t('无安全加密'), 'ssl' => _t('SSL加密'), 'tls' => _t('TLS加密')), 'none', _t('SMTP加密模式'));
+        $SMTPSecure = new Typecho_Widget_Helper_Form_Element_Radio('SMTPSecure', array('none' => _t('无安全加密'), 'ssl' => _t('SSL加密'), 'tls' => _t('TLS加密')), 'none', _t('SMTP加密模式'));
         $form->addInput($SMTPSecure);
 
         $mail = new Typecho_Widget_Helper_Form_Element_Text('mail', NULL, null, _t('接收邮箱'), _t('接收邮件用的信箱，此项必填！'));
         $form->addInput($mail->addRule('email', _t('请填写正确的邮箱！')));
+
+        $debug = new Typecho_Widget_Helper_Form_Element_Radio('debug', array('off' => _t('关闭(默认)'), 'on' => _t('开启')), 'on', _t('调试模式'));
+        $form->addInput($debug);
     }
 
     /**

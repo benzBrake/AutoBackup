@@ -172,14 +172,12 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
     private function SendMail($smtp)
     {
         // 获取插件配置
-        $SMTPSecure = $this->plugin->SMTPSecure; // SMTP 加密类型 'ssl' or 'tls'.
         try {
             $STMPHost = $smtp['host']; //SMTP服务器地址
             $SMTPPort = $smtp['port']; //端口
 
             $SMTPUserName = $smtp['user']; //用户名
             $SMTPPassword = $smtp['pass']; //邮箱秘钥
-            $SMTPSecure = $SMTPSecure; //加密方式
             $fromMail = $smtp['user']; //发件邮箱
             $fromName = '备份小助手'; //发件人名字
             $fromMailr = $smtp['from']; //收件人邮箱
@@ -190,14 +188,20 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
             $mail->Encoding = PHPMailer::ENCODING_BASE64;
             $mail->isSMTP();
             $mail->Host = $STMPHost; // SMTP 服务地址
-            $mail->SMTPAuth = true; // 开启认证
             $mail->Username = $SMTPUserName; // SMTP 用户名
             $mail->Password = $SMTPPassword; // SMTP 密码
-            $mail->SMTPSecure = $SMTPSecure; // SMTP 加密类型
+            if ($this->plugin->SMTPSecure == 'ssl' || $this->plugin->SMTPSecure == 'tls') {
+                $mail->SMTPAuth = true; // 开启认证
+                $mail->SMTPSecure = $this->plugin->SMTPSecure; // SMTP 加密类型
+            }
+
             $mail->Port = $SMTPPort; // SMTP 端口
             $mail->setFrom($fromMail, $fromName); //发件人
             $mail->addAddress($fromMailr);
-            //$mail->SMTPDebug = SMTP::DEBUG_CLIENT;
+
+            if ($this->plugin->debug == 'on') {
+                $mail->SMTPDebug = SMTP::DEBUG_CLIENT;
+            }
 
             $mail->Subject = $smtp['subject'];
             $mail->isHTML(); // 邮件为HTML格式
