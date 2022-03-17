@@ -44,6 +44,7 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
     public function throwMsg($message = '', $code = 200)
     {
         $this->response->throwJson(['status' => $code, 'msg' => $message]);
+        die();
     }
 
     /**
@@ -112,13 +113,13 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
         $smtp['to'] = $email_to;
         $smtp['from'] = $email_to;
 
-        $message = $this->SendMail($smtp);
+        $status = $this->SendMail($smtp);
         $filePath = str_replace("/", DIRECTORY_SEPARATOR, $filePath);
         unlink($filePath);
-        if ($message['status'] != 0) {
-            $this->throwMsg($message['msg'], $message['status']);
+        if (array_key_exists('status', $status)) {
+            $this->throwMsg($status['msg'], $status['status']);
         }
-        $this->throwMsg($message['msg']);
+        $this->throwMsg($status['msg']);
     }
 
     /**
