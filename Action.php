@@ -61,6 +61,10 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
      */
     public function action()
     {
+        if ($this->plugin->debug == 'on') {
+            ini_set('display_errors', 1);
+            error_reporting(E_ALL);
+        }
         // 检查 Token
         $db = $this->db;
         $params = [
@@ -213,7 +217,7 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
             $message['msg'] = _t("发送成功");
         } catch (Exception $e) {
             $message = ['status' => '500'];
-            $message['message'] = $e->getMessage();
+            $message['msg'] = $e->getMessage();
         }
         return $message;
     }
