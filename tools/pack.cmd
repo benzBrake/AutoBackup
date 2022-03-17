@@ -1,2 +1,2 @@
 @echo off
-call pack-original.cmd
+PowerShell.exe -file pack-original.ps1
