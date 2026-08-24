@@ -124,12 +124,13 @@ class AutoBackup_Plugin implements Typecho_Plugin_Interface
                 tablesCheck.appendChild(divEl);
                 divEl.querySelector('.select-all').addEventListener('click', () => {
                     [].forEach.call(tablesCheck.querySelectorAll('input[type="checkbox"]'), el => {
-                        el.checked = 'checked';
+                        // Use the boolean property so the browser includes every item in POST.
+                        el.checked = true;
                     });
                 });
                 divEl.querySelector('.un-select-all').addEventListener('click', () => {
                     [].forEach.call(tablesCheck.querySelectorAll('input[type="checkbox"]'), el => {
-                        el.checked = '';
+                        el.checked = false;
                     });
                 });
                 // 加载日志
@@ -162,7 +163,8 @@ class AutoBackup_Plugin implements Typecho_Plugin_Interface
 
         </div>
         <?php
-        $tables = new Typecho_Widget_Helper_Form_Element_Checkbox('tables', self::listTables(), null, _t('需要备份的数据表'), _t('选择你需要备份的数据表'));
+        // An empty array is the explicit unchecked state expected by Typecho 1.3.
+        $tables = new Typecho_Widget_Helper_Form_Element_Checkbox('tables', self::listTables(), [], _t('需要备份的数据表'), _t('选择你需要备份的数据表'));
         $tables->setAttribute('class', 'typecho-option fix-for-tables');
         $form->addInput($tables);
 
