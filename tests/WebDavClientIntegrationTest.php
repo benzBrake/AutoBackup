@@ -28,4 +28,22 @@ if (file_get_contents($target) !== file_get_contents($source)) {
     exit(1);
 }
 
+$nestedDirectory = dirname($target) . DIRECTORY_SEPARATOR . 'nested';
+if (!is_dir($nestedDirectory)) mkdir($nestedDirectory);
+file_put_contents($nestedDirectory . DIRECTORY_SEPARATOR . 'hidden.sql', 'hidden');
+$items = $client->listDirectory($directory);
+$matches = array_values(array_filter($items, function ($item) use ($remoteName) {
+    return $item['name'] === $remoteName;
+}));
+if (count($matches) !== 1 || $matches[0]['type'] !== 'file' || $matches[0]['size'] !== filesize($source)) {
+    fwrite(STDERR, "Listed file metadata is invalid\n");
+    exit(1);
+}
+foreach ($items as $item) {
+    if ($item['name'] === 'hidden.sql') {
+        fwrite(STDERR, "Directory listing unexpectedly recursed\n");
+        exit(1);
+    }
+}
+
 echo "WebDAV integration test passed\n";

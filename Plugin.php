@@ -442,6 +442,21 @@ class AutoBackup_Plugin implements Typecho_Plugin_Interface
                 background: #edf2f6;
             }
 
+            .autobackup-webdav-browser {
+                background: var(--ab-surface);
+                border: 1px solid var(--ab-border);
+                border-radius: 4px;
+                margin: 0 0 18px;
+                padding: 15px;
+            }
+            .autobackup-webdav-browser-header { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+            .autobackup-webdav-browser h3 { color: var(--ab-text); font-size: 15px; margin: 0; }
+            .autobackup-webdav-browser-status { color: var(--ab-muted); margin: 12px 0 0; }
+            .autobackup-webdav-browser-table-wrap { overflow-x: auto; margin-top: 12px; }
+            .autobackup-webdav-browser table { border-collapse: collapse; min-width: 520px; width: 100%; }
+            .autobackup-webdav-browser th, .autobackup-webdav-browser td { border-bottom: 1px solid var(--ab-border); padding: 9px 8px; text-align: left; }
+            .autobackup-webdav-browser th { color: var(--ab-muted); font-size: 12px; }
+
             .autobackup-form .typecho-option-submit { background: transparent; box-shadow: none; margin: 4px 0 0; padding: 0; }
             .autobackup-form .typecho-option-submit li { padding: 0; }
             .autobackup-form .typecho-option-submit .primary {
@@ -499,6 +514,19 @@ class AutoBackup_Plugin implements Typecho_Plugin_Interface
             <div class="autobackup-tabs" role="tablist" aria-label="<?php _e('备份目标设置'); ?>">
                 <button type="button" id="autobackup-tab-email" role="tab" aria-selected="true" aria-controls="autobackup-panel-email" data-tab="email"><?php _e('发送邮件'); ?></button>
                 <button type="button" id="autobackup-tab-webdav" role="tab" aria-selected="false" aria-controls="autobackup-panel-webdav" data-tab="webdav" tabindex="-1"><?php _e('WebDAV'); ?></button>
+            </div>
+            <div class="autobackup-webdav-browser" id="autobackup-webdav-browser">
+                <div class="autobackup-webdav-browser-header">
+                    <h3><?php _e('远端备份文件'); ?></h3>
+                    <button type="button" class="autobackup-small-button" id="autobackup-webdav-list"><?php _e('列出远端文件'); ?></button>
+                </div>
+                <p class="autobackup-webdav-browser-status" id="autobackup-webdav-list-status" aria-live="polite"></p>
+                <div class="autobackup-webdav-browser-table-wrap" id="autobackup-webdav-list-table" hidden>
+                    <table>
+                        <thead><tr><th><?php _e('名称'); ?></th><th><?php _e('类型'); ?></th><th><?php _e('大小'); ?></th><th><?php _e('修改时间'); ?></th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </div>
         <script type="text/javascript">
@@ -579,6 +607,45 @@ class AutoBackup_Plugin implements Typecho_Plugin_Interface
                     });
                     panels[name] = panel;
                 });
+
+                var browser = document.getElementById('autobackup-webdav-browser');
+                if (browser) panels.webdav.insertBefore(browser, panels.webdav.firstChild);
+                var listButton = document.getElementById('autobackup-webdav-list');
+                var listStatus = document.getElementById('autobackup-webdav-list-status');
+                var listTable = document.getElementById('autobackup-webdav-list-table');
+                var listBody = listTable && listTable.querySelector('tbody');
+                if (listButton && listStatus && listTable && listBody) {
+                    listButton.addEventListener('click', function () {
+                        listButton.disabled = true;
+                        listStatus.textContent = '正在读取远端文件...';
+                        listTable.hidden = true;
+                        fetch(<?php echo json_encode(Typecho_Common::url('action/backup?mode=list&token=' . $token, Helper::options()->index)); ?>, { credentials: 'same-origin' })
+                            .then(function (response) { return response.json().then(function (json) { return { ok: response.ok, json: json }; }); })
+                            .then(function (result) {
+                                if (!result.ok || !result.json || result.json.status !== 200) throw new Error(result.json && result.json.msg ? result.json.msg : '读取远端文件失败');
+                                listBody.innerHTML = '';
+                                var files = result.json.files || [];
+                                if (!files.length) { listStatus.textContent = '当前目录没有备份文件。'; return; }
+                                files.forEach(function (file) {
+                                    var row = document.createElement('tr');
+                                    [file.name, file.type === 'file' ? '文件' : '目录', file.size === null ? '-' : formatBytes(file.size), file.modified || '-'].forEach(function (value) {
+                                        var cell = document.createElement('td'); cell.textContent = value; row.appendChild(cell);
+                                    });
+                                    listBody.appendChild(row);
+                                });
+                                listStatus.textContent = '共 ' + files.length + ' 个备份文件。';
+                                listTable.hidden = false;
+                            })
+                            .catch(function (error) { listStatus.textContent = error.message || '读取远端文件失败'; })
+                            .then(function () { listButton.disabled = false; });
+                    });
+                }
+                function formatBytes(bytes) {
+                    if (!bytes) return '0 B';
+                    var units = ['B', 'KB', 'MB', 'GB'];
+                    var index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+                    return (bytes / Math.pow(1024, index)).toFixed(index ? 1 : 0) + ' ' + units[index];
+                }
 
                 var tablesCheck = form.querySelector('.fix-for-tables');
                 if (tablesCheck) {

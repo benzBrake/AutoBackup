@@ -37,6 +37,8 @@ test('settings keep table selection outside destination tabs', async ({ page }) 
 
     await page.getByRole('tab', { name: 'WebDAV' }).click();
     await expect(page.locator('input[name="webdavUrl"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: '列出远端文件' })).toBeVisible();
+    await expect(page.locator('#autobackup-webdav-list-status')).toBeVisible();
     await expect(page.locator('.fix-for-tables')).toBeVisible();
     await expect(page.locator('.autobackup-common-field').filter({ hasText: '调试模式' })).toBeVisible();
     await expect(page.locator('#autobackup-panel-email')).toBeHidden();

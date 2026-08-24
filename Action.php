@@ -60,6 +60,10 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
 
         $this->validateToken();
 
+        if (Typecho_Request::getInstance()->get('mode') === 'list') {
+            $this->listWebdavFiles();
+        }
+
         // Missing emailEnabled means this is an installation upgraded from 1.3.x.
         $emailEnabled = $this->plugin->emailEnabled === null || $this->plugin->emailEnabled === 'on';
         $webdavEnabled = $this->plugin->webdavEnabled === 'on';
@@ -93,6 +97,42 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
             $messages[] = $target . '：' . $result['message'];
         }
         $this->throwMsg(implode('；', $messages), $success ? 200 : 500);
+    }
+
+    /**
+     * Return backup files from the configured WebDAV directory.
+     *
+     * @return void
+     */
+    private function listWebdavFiles()
+    {
+        try {
+            $url = trim((string) $this->plugin->webdavUrl);
+            $username = (string) $this->plugin->webdavUsername;
+            $password = (string) $this->plugin->webdavPassword;
+            $directory = trim((string) $this->plugin->webdavDirectory);
+            if ($url === '' || $username === '' || $password === '' || $directory === '') {
+                throw new InvalidArgumentException('请先保存完整的 WebDAV 配置');
+            }
+
+            $client = new AutoBackup_WebDavClient(
+                $url,
+                $username,
+                $password,
+                $this->plugin->webdavVerifyTls !== 'off'
+            );
+            $files = array_values(array_filter($client->listDirectory($directory), function ($item) {
+                return $item['type'] === 'file'
+                    && preg_match('/^AutoBackup.*\.(?:sql|zip)$/i', $item['name']);
+            }));
+            usort($files, function ($left, $right) {
+                return strtotime($right['modified']) <=> strtotime($left['modified']);
+            });
+            $this->response->throwJson(['status' => 200, 'files' => $files]);
+        } catch (\Exception $exception) {
+            $this->throwMsg($exception->getMessage(), 500);
+        }
+        exit;
     }
 
     /**

@@ -53,6 +53,71 @@ class AutoBackup_WebDavClient
     }
 
     /**
+     * List direct children of a remote directory.
+     *
+     * @param string $directory
+     * @return array
+     */
+    public function listDirectory($directory)
+    {
+        $segments = $this->pathSegments($directory);
+        $response = $this->request('PROPFIND', $this->buildUrl($segments, true), null, [
+            'Depth: 1',
+            'Content-Type: application/xml'
+        ]);
+        if ($response['status'] !== 207) {
+            throw new RuntimeException($this->formatHttpError('读取 WebDAV 目录失败', $response));
+        }
+
+        libxml_use_internal_errors(true);
+        $xml = simplexml_load_string($response['body']);
+        if ($xml === false) {
+            libxml_clear_errors();
+            throw new RuntimeException('WebDAV 返回了无效的目录列表');
+        }
+
+        $items = [];
+        $responses = $xml->children('DAV:')->response;
+        foreach ($responses as $entry) {
+            $entryDav = $entry->children('DAV:');
+            $href = trim((string) ($entryDav->href ?? ''));
+            $prop = null;
+            foreach ($entryDav->propstat as $propstat) {
+                $propCandidate = $propstat->children('DAV:')->prop;
+                if ($propCandidate instanceof SimpleXMLElement) {
+                    $prop = $propCandidate;
+                    break;
+                }
+            }
+            if ($prop === null || $href === '') {
+                continue;
+            }
+            $hrefPath = parse_url($href, PHP_URL_PATH);
+            if (!is_string($hrefPath) || $hrefPath === '') {
+                continue;
+            }
+            $name = basename(rtrim(rawurldecode((string) $hrefPath), '/'));
+            if ($name === '') {
+                continue;
+            }
+            $propDav = $prop->children('DAV:');
+            $resourceType = $propDav->resourcetype;
+            $resourceTypeDav = $resourceType->children('DAV:');
+            $isDirectory = isset($resourceType->collection) || isset($resourceTypeDav->collection);
+            $size = $isDirectory ? null : (int) ($propDav->getcontentlength ?? 0);
+            $modified = (string) ($propDav->getlastmodified ?? '');
+            $items[] = [
+                'name' => $name,
+                'type' => $isDirectory ? 'directory' : 'file',
+                'size' => $size,
+                'modified' => $modified
+            ];
+        }
+        libxml_clear_errors();
+        return $items;
+    }
+
+    /**
      * @param array $segments
      * @return void
      */

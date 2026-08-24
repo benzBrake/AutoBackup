@@ -44,7 +44,28 @@ if ($method === 'MKCOL') {
 }
 
 if ($method === 'PROPFIND') {
-    http_response_code(is_dir($target) ? 207 : 404);
+    if (!is_dir($target)) {
+        http_response_code(404);
+        exit;
+    }
+    $responses = [];
+    $entries = [$target];
+    if (isset($_SERVER['HTTP_DEPTH']) && $_SERVER['HTTP_DEPTH'] === '1') {
+        $children = scandir($target);
+        foreach ($children as $child) {
+            if ($child !== '.' && $child !== '..') $entries[] = $target . DIRECTORY_SEPARATOR . $child;
+        }
+    }
+    foreach ($entries as $entry) {
+        $relative = str_replace(DIRECTORY_SEPARATOR, '/', substr($entry, strlen(rtrim($root, '/\\'))));
+        $href = '/dav' . $relative . (is_dir($entry) ? '/' : '');
+        $responses[] = '<d:response><d:href>' . htmlspecialchars($href, ENT_XML1, 'UTF-8') . '</d:href><d:propstat><d:prop>'
+            . (is_dir($entry) ? '<d:resourcetype><d:collection/></d:resourcetype>' : '<d:resourcetype/><d:getcontentlength>' . filesize($entry) . '</d:getcontentlength>')
+            . '<d:getlastmodified>' . gmdate('D, d M Y H:i:s', filemtime($entry)) . ' GMT</d:getlastmodified></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>';
+    }
+    header('Content-Type: application/xml; charset="utf-8"');
+    http_response_code(207);
+    echo '<?xml version="1.0" encoding="UTF-8"?><d:multistatus xmlns:d="DAV:">' . implode('', $responses) . '</d:multistatus>';
     exit;
 }
 
