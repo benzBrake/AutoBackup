@@ -4,10 +4,10 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
 }
 
 use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
 use PHPMailer\PHPMailer\SMTP;
 
-require_once 'vendor/autoload.php';
+require_once dirname(__FILE__) . '/vendor/autoload.php';
+require_once dirname(__FILE__) . '/WebDavClient.php';
 
 class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
 {
@@ -15,211 +15,271 @@ class AutoBackup_Action extends Typecho_Widget implements Widget_Interface_Do
     private $options;
     private $plugin;
 
-    /**
-     * AutoBackup_Action constructor.
-     * @throws Typecho_Db_Exception
-     * @throws Typecho_Plugin_Exception
-     */
     public function __construct($request, $response, $params = null)
     {
         parent::__construct($request, $response, $params);
         $this->db = Typecho_Db::get();
         $this->options = Helper::options();
-        $this->plugin = Helper::options()->plugin('AutoBackup');
+        $this->plugin = $this->options->plugin('AutoBackup');
     }
 
-    /**
-     * 这个函数不能少
-     */
     public function execute()
     {
-
     }
 
     /**
-     * 抛出 JSON 信息
      * @param string $message
-     * @param int $code 状态码
+     * @param int $code
+     * @return void
      */
     public function throwMsg($message = '', $code = 200)
     {
         $this->response->throwJson(['status' => $code, 'msg' => $message]);
-        die();
+        exit;
     }
 
     /**
-     * 检查 Token
-     * @param $token
+     * @param string $token
      * @return bool
      */
     public function checkToken($token)
     {
-        return $token == unserialize(Helper::options()->AutoBackup)['token'];
+        $options = unserialize($this->options->AutoBackup);
+        return isset($options['token']) && $token == $options['token'];
     }
 
     /**
-     * 接口入口
+     * 接口入口。
      */
     public function action()
     {
-        if ($this->plugin->debug == 'on') {
+        if ($this->plugin->debug === 'on') {
             ini_set('display_errors', 1);
             error_reporting(E_ALL);
         }
-        // 检查 Token
-        $db = $this->db;
-        $params = [
-            'token' => Typecho_Request::getInstance()->get('token')
-        ];
-        $validator = new Typecho_Validate();
-        $validator->addRule('token', 'required', _t("无 Token 不工作"));
-        $validator->addRule('token', 'xssCheck', _t("请不要手贱"));
-        $validator->addRule('token', array($this, 'checkToken'), _t("我要报警了"));
-        if ($error = $validator->run($params)) {
-            $this->throwMsg(implode(';', $error), '403');
-        }
-        $current = Typecho_Date::time();
-        $filePath = $this->createSql();
 
-        //将备份文件发送至设置的邮箱
-        $smtp = array();
-        $smtp['site'] = $this->options->title;
-        $smtp['attach'] = $filePath;
-        $smtp['attach_name'] = "AutoBackup" . date("Ymd", $current) . ".zip";
-        if (!function_exists('gzopen')) {
-            $smtp['attach_name'] = "AutoBackup" . date("Ymd", $current) . ".sql";
-        }
-        //获取SMTP设置
-        $smtp['user'] = $this->plugin->user;
-        $smtp['pass'] = $this->plugin->pass;
-        $smtp['host'] = $this->plugin->host;
-        $smtp['port'] = $this->plugin->port;
+        $this->validateToken();
 
-        if (empty($this->plugin->subject != "")) {
-            $smtp['subject'] = _t('%s-数据库备份文件', date("Ymd") . '-' . $this->plugin->subject);
-        } else {
-            $smtp['subject'] = _t($this->plugin->subject, date("Ymd"));
+        // Missing emailEnabled means this is an installation upgraded from 1.3.x.
+        $emailEnabled = $this->plugin->emailEnabled === null || $this->plugin->emailEnabled === 'on';
+        $webdavEnabled = $this->plugin->webdavEnabled === 'on';
+        if (!$emailEnabled && !$webdavEnabled) {
+            $this->throwMsg(_t('请至少启用一个备份目标'), 500);
         }
 
-        $smtp['AltBody'] = "";
-        $smtp['body'] = '<div><div style="position: relative;color:#555;letter-spacing: 2px;font:12px/1.5 PingFangSC-Light,Microsoft YaHei,Tahoma,Helvetica,Arial,sans-serif;max-width:600px;margin:50px auto;border-top: 1px solid #d8d8d863;border-right:1px solid rgb(224 224 224);border-left:1px solid #d8d8d863;box-shadow: rgb(203, 208, 218) 0px 2px, rgba(48, 52, 63, 0.2) 0px 3px, rgba(48, 52, 63, 0.2) 0px 7px 7px, rgb(255, 255, 255) 0px 0px 0px 1px inset;border-radius: 5px;background: 0 0 repeat-x #FFF;background-image: -webkit-repeating-linear-gradient(135deg, #6c5b92, #4882CE 20px, #FFF 20px, #FFF 35px, #00769a 35px, #00769a 55px, #FFF 55px, #FFF 70px);background-image: repeating-linear-gradient(-45deg, #6c5b92, #6c5b92 20px, #FFF 20px, #FFF 35px, #00769a 35px, #00769a 55px, #FFF 55px, #FFF 70px);background-size: 100% 10px;"><div style="padding: 0 15px 8px;"><h2 style="border-bottom:1px solid #e9e9e9;font-size:18px;font-weight:normal;padding:10px 0 10px;"><span style="color: #12ADDB"><br>❀</span>&nbsp;' . date("Y年m月d日") . '</h2><div class="content"><div style="font-size:14px;color:#777;padding:0 10px;margin-top:10px"><p style="background-color: #f5f5f5;border: 0px solid #DDD;padding: 10px 15px;margin:18px 0">这是从' . $smtp["site"] . '由Typecho AutoBackup插件自动发送的数据库备份文件，备份文件详见邮件附件！</p></div></div><div align="center" style="text-align: center; font-size: 12px; line-height: 14px; color: rgb(163, 163, 163); padding: 5px 0px;"><div style="color:#888;padding:10px;"><p style="margin:0;padding:0;letter-spacing: 1px;line-height: 2;">该邮件由您的Typecho博客<a href="' . $this->options->siteUrl . '">' . $smtp["site"] . '</a>使用的插件AutoBackup发出<br />如果你没有做相关设置，请联系邮件来源地址' . $smtp["user"] . '</p></div></div></div></div></div>';
+        $filePath = null;
+        $results = [];
+        try {
+            $current = Typecho_Date::time();
+            $filePath = $this->createSql();
 
-        if ($this->plugin->mail != "") {
-            $email_to = $this->plugin->mail;
-        } else {
-            $email_to = $db->fetchObject($db->query($db->select()->from('table.users')->where('uid', 1)))->mail;
+            if ($emailEnabled) {
+                $results['邮件'] = $this->deliverEmail($filePath, $current);
+            }
+            if ($webdavEnabled) {
+                $results['WebDAV'] = $this->deliverWebdav($filePath, $current);
+            }
+        } catch (\Exception $exception) {
+            $this->cleanupBackupFile($filePath);
+            $this->throwMsg($exception->getMessage(), 500);
         }
 
-        $smtp['to'] = $email_to;
-        $smtp['from'] = $email_to;
+        $this->cleanupBackupFile($filePath);
 
-        $status = $this->SendMail($smtp);
-        $filePath = str_replace("/", DIRECTORY_SEPARATOR, $filePath);
-        unlink($filePath);
-        if (array_key_exists('status', $status)) {
-            $this->throwMsg($status['msg'], $status['status']);
+        $success = true;
+        $messages = [];
+        foreach ($results as $target => $result) {
+            $success = $success && $result['success'];
+            $messages[] = $target . '：' . $result['message'];
         }
-        $this->throwMsg($status['msg']);
+        $this->throwMsg(implode('；', $messages), $success ? 200 : 500);
     }
 
     /**
-     * 获取备份 SQL 语句
+     * @return void
+     */
+    private function validateToken()
+    {
+        $params = ['token' => Typecho_Request::getInstance()->get('token')];
+        $validator = new Typecho_Validate();
+        $validator->addRule('token', 'required', _t('无 Token 不工作'));
+        $validator->addRule('token', 'xssCheck', _t('Token 格式无效'));
+        $validator->addRule('token', [$this, 'checkToken'], _t('Token 验证失败'));
+        if ($error = $validator->run($params)) {
+            $this->throwMsg(implode(';', $error), 403);
+        }
+    }
+
+    /**
+     * @param string $filePath
+     * @param int $current
+     * @return array
+     */
+    private function deliverEmail($filePath, $current)
+    {
+        $recipient = $this->plugin->mail;
+        if ($recipient === null || $recipient === '') {
+            $recipient = $this->db->fetchObject(
+                $this->db->query($this->db->select()->from('table.users')->where('uid', 1))
+            )->mail;
+        }
+
+        $subject = $this->plugin->subject;
+        if ($subject === null || $subject === '') {
+            $subject = _t('%s-数据库备份文件', date('Ymd', $current));
+        } else {
+            $subject = _t($subject, date('Ymd', $current));
+        }
+
+        $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+        $smtp = [
+            'site' => $this->options->title,
+            'attach' => $filePath,
+            'attach_name' => 'AutoBackup' . date('Ymd', $current) . '.' . $extension,
+            'user' => (string) $this->plugin->user,
+            'pass' => (string) $this->plugin->pass,
+            'host' => (string) $this->plugin->host,
+            'port' => (string) $this->plugin->port,
+            'to' => $recipient,
+            'subject' => $subject
+        ];
+
+        return $this->sendMail($smtp);
+    }
+
+    /**
+     * @param string $filePath
+     * @param int $current
+     * @return array
+     */
+    private function deliverWebdav($filePath, $current)
+    {
+        try {
+            $url = trim((string) $this->plugin->webdavUrl);
+            $username = (string) $this->plugin->webdavUsername;
+            $password = (string) $this->plugin->webdavPassword;
+            $directory = trim((string) $this->plugin->webdavDirectory);
+
+            if ($url === '' || $username === '' || $password === '' || $directory === '') {
+                throw new InvalidArgumentException('WebDAV 已启用，但地址、用户名、密码或远端目录未填写完整');
+            }
+
+            $extension = strtolower(pathinfo($filePath, PATHINFO_EXTENSION));
+            $remoteName = 'AutoBackup' . date('Ymd-His', $current) . '.' . $extension;
+            $client = new AutoBackup_WebDavClient(
+                $url,
+                $username,
+                $password,
+                $this->plugin->webdavVerifyTls !== 'off'
+            );
+            $client->upload($filePath, $directory, $remoteName);
+            return ['success' => true, 'message' => _t('上传成功')];
+        } catch (\Exception $exception) {
+            return ['success' => false, 'message' => $exception->getMessage()];
+        }
+    }
+
+    /**
      * @return string
+     * @throws RuntimeException
      */
     public function createSql()
     {
         $tables = $this->plugin->tables;
-        if (!is_array($tables)) $this->throwMsg(_t("你没有选择任何表"), 500);
-        $sql = "-- Typecho AutoBackup\r\n-- version 1.2.0\r\n-- 生成日期: " . date("Y年m月d日 H:i:s") . "\r\n-- 使用说明：创建一个数据库，然后导入文件\r\n\r\n";
+        if (!is_array($tables) || count($tables) === 0) {
+            throw new RuntimeException(_t('你没有选择任何表'));
+        }
 
-        for ($i = 0; $i < count($tables); $i++) {        //循环获取数据库中数据
-            $table = $tables[$i];
-            $sql .= "\r\nDROP TABLE IF EXISTS " . $table . ";\r\n";
-            $createSql = $this->db->fetchRow($this->db->query("SHOW CREATE TABLE `" . $table . "`"));
+        $sql = "-- Typecho AutoBackup\r\n-- version 1.4.0\r\n-- 生成日期: "
+            . date('Y年m月d日 H:i:s')
+            . "\r\n-- 使用说明：创建一个数据库，然后导入文件\r\n\r\n";
+
+        foreach ($tables as $table) {
+            $quotedTable = str_replace('`', '``', $table);
+            $sql .= "\r\nDROP TABLE IF EXISTS `" . $quotedTable . "`;\r\n";
+            $createSql = $this->db->fetchRow($this->db->query('SHOW CREATE TABLE `' . $quotedTable . '`'));
             $sql .= $createSql['Create Table'] . ";\r\n";
             $result = $this->db->query($this->db->select()->from($table));
             while ($row = $this->db->fetchRow($result)) {
-                foreach ($row as $key => $value) {    //每次取一行数据
-                    $keys[] = "`" . $key . "`";        //字段存入数组
-                    $values[] = "'" . addslashes($value) . "'";        //值存入数组
+                $keys = [];
+                $values = [];
+                foreach ($row as $key => $value) {
+                    $keys[] = '`' . str_replace('`', '``', $key) . '`';
+                    $values[] = $value === null ? 'NULL' : "'" . addslashes($value) . "'";
                 }
-                $sql .= "INSERT INTO `" . $table . "` (" . implode(",", $keys) . ") VALUES (" . implode(",", $values) . ");\r\n";    //生成插入语句
-
-                //清空字段和值数组
-                unset($keys);
-                unset($values);
+                $sql .= 'INSERT INTO `' . $quotedTable . '` (' . implode(',', $keys) . ') VALUES ('
+                    . implode(',', $values) . ");\r\n";
             }
         }
 
-        if (!is_dir(dirname(__FILE__) . "/files")) {
-            mkdir(dirname(__FILE__) . "/files");
+        $directory = dirname(__FILE__) . '/files';
+        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+            throw new RuntimeException(_t('无法创建本地备份目录'));
         }
-        $filePath = dirname(__FILE__) . "/files/" . md5($this->plugin->pass . time()) . ".sql";
 
-        file_put_contents($filePath, $sql);
+        $baseName = md5(uniqid('', true) . mt_rand());
+        $sqlPath = $directory . '/' . $baseName . '.sql';
+        if (file_put_contents($sqlPath, $sql) === false) {
+            throw new RuntimeException(_t('无法写入本地备份文件'));
+        }
         if (!function_exists('gzopen')) {
-            return $filePath;
+            return $sqlPath;
         }
 
-        $zip = new PclZip(dirname(__FILE__) . "/files/" . md5($this->plugin->pass . time()) . ".zip");
-        $zip->create($filePath, PCLZIP_OPT_REMOVE_PATH, dirname(__FILE__) . "/files/");
-        unlink($filePath);
+        $zip = new PclZip($directory . '/' . $baseName . '.zip');
+        if ($zip->create($sqlPath, PCLZIP_OPT_REMOVE_PATH, $directory . '/') === 0) {
+            @unlink($sqlPath);
+            throw new RuntimeException(_t('压缩备份文件失败'));
+        }
+        @unlink($sqlPath);
         return $zip->zipname;
     }
 
     /**
-     * 发送邮件
-     *
-     * @access public
-     * @param array $smtp 邮件信息
-     * @return Array
+     * @param array $smtp
+     * @return array
      */
-    private function SendMail($smtp)
+    private function sendMail(array $smtp)
     {
-        // 获取插件配置
         try {
-            $STMPHost = $smtp['host']; //SMTP服务器地址
-            $SMTPPort = $smtp['port']; //端口
-
-            $SMTPUserName = $smtp['user']; //用户名
-            $SMTPPassword = $smtp['pass']; //邮箱秘钥
-            $fromMail = $smtp['user']; //发件邮箱
-            $fromName = '备份小助手'; //发件人名字
-            $fromMailr = $smtp['from']; //收件人邮箱
-
-            // Server settings
             $mail = new PHPMailer(true);
             $mail->CharSet = PHPMailer::CHARSET_UTF8;
             $mail->Encoding = PHPMailer::ENCODING_BASE64;
             $mail->isSMTP();
-            $mail->Host = $STMPHost; // SMTP 服务地址
-            $mail->Username = $SMTPUserName; // SMTP 用户名
-            $mail->Password = $SMTPPassword; // SMTP 密码
-            if ($this->plugin->SMTPSecure == 'ssl' || $this->plugin->SMTPSecure == 'tls') {
-                $mail->SMTPAuth = true; // 开启认证
-                $mail->SMTPSecure = $this->plugin->SMTPSecure; // SMTP 加密类型
+            $mail->Host = $smtp['host'];
+            $mail->Port = $smtp['port'];
+            $mail->Username = $smtp['user'];
+            $mail->Password = $smtp['pass'];
+            $mail->SMTPAuth = $smtp['user'] !== '';
+            if ($this->plugin->SMTPSecure === 'ssl' || $this->plugin->SMTPSecure === 'tls') {
+                $mail->SMTPSecure = $this->plugin->SMTPSecure;
             }
-
-            $mail->Port = $SMTPPort; // SMTP 端口
-            $mail->setFrom($fromMail, $fromName); //发件人
-            $mail->addAddress($fromMailr);
-
-            if ($this->plugin->debug == 'on') {
+            $mail->setFrom($smtp['user'], _t('备份小助手'));
+            $mail->addAddress($smtp['to']);
+            if ($this->plugin->debug === 'on') {
                 $mail->SMTPDebug = SMTP::DEBUG_CLIENT;
             }
-
             $mail->Subject = $smtp['subject'];
-            $mail->isHTML(); // 邮件为HTML格式
-            // 邮件内容
-            $mail->Body = $smtp['AltBody'] . $smtp['body'];
-            $mail->AddAttachment($smtp['attach'], $smtp['attach_name']);
+            $mail->isHTML(true);
+            $mail->Body = '<p>这是由 ' . htmlspecialchars($smtp['site'], ENT_QUOTES, 'UTF-8')
+                . ' 的 AutoBackup 插件自动生成的数据库备份文件，备份文件详见附件。</p>';
+            $mail->AltBody = 'AutoBackup 数据库备份文件，备份文件详见附件。';
+            $mail->addAttachment($smtp['attach'], $smtp['attach_name']);
             $mail->send();
-            $message = ['status' => '200'];
-            $message['msg'] = _t("发送成功");
-        } catch (Exception $e) {
-            $message = ['status' => '500'];
-            $message['msg'] = $e->getMessage();
+            return ['success' => true, 'message' => _t('发送成功')];
+        } catch (\Exception $exception) {
+            return ['success' => false, 'message' => $exception->getMessage()];
         }
-        return $message;
+    }
+
+    /**
+     * @param string|null $filePath
+     * @return void
+     */
+    private function cleanupBackupFile($filePath)
+    {
+        if ($filePath !== null && is_file($filePath)) {
+            @unlink($filePath);
+        }
     }
 }

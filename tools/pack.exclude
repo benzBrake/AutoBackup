@@ -12,5 +12,7 @@ pack
 pack\*
 tools\*
 tools
+tests\*
+tests
 cache
 cache\*

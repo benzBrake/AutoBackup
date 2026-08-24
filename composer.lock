@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "36f241fd5ef5f4102285b231ce1fe3d3",
+    "content-hash": "6467ea401ad8ae6285975cf95308c4be",
     "packages": [
         {
             "name": "pclzip/pclzip",
@@ -131,7 +131,8 @@
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
-        "ext-simplexml": "*"
+        "ext-simplexml": "*",
+        "ext-curl": "*"
     },
     "platform-dev": [],
     "plugin-api-version": "2.1.0"
